@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Edit, ArrowLeft, Send, MessageSquare } from 'lucide-react';
+import { Search, Edit, ArrowLeft, Send, Bot, X } from 'lucide-react';
 import { BottomNav } from '@/components/app/BottomNav';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,8 @@ export default function DialoguePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showNewConversation, setShowNewConversation] = useState(false);
+  const [newUserId, setNewUserId] = useState('');
 
   useEffect(() => {
     loadConversations();
@@ -98,6 +100,59 @@ export default function DialoguePage() {
     }
   };
 
+  const handleStartNewConversation = async () => {
+    if (!newUserId.trim()) return;
+
+    // Create or find conversation with the user ID
+    try {
+      const response = await fetch('/api/dialogue/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: newUserId.trim() }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const conversationId = data.conversation?.id || `new_${newUserId.trim()}`;
+        
+        // Add to conversations list if it's a new one
+        if (data.conversation && !conversations.find(c => c.id === data.conversation.id)) {
+          setConversations(prev => [data.conversation, ...prev]);
+        }
+        
+        setSelectedConversation(conversationId);
+      } else {
+        // Fallback: create a temporary conversation and navigate
+        const tempConversation: Conversation = {
+          id: `temp_${Date.now()}`,
+          name: newUserId.trim(),
+          lastMessage: '',
+          timestamp: new Date().toISOString(),
+          unread: 0,
+          status: 'away',
+        };
+        setConversations(prev => [tempConversation, ...prev]);
+        setSelectedConversation(tempConversation.id);
+      }
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      // Fallback: create a temporary conversation locally
+      const tempConversation: Conversation = {
+        id: `temp_${Date.now()}`,
+        name: newUserId.trim(),
+        lastMessage: '',
+        timestamp: new Date().toISOString(),
+        unread: 0,
+        status: 'away',
+      };
+      setConversations(prev => [tempConversation, ...prev]);
+      setSelectedConversation(tempConversation.id);
+    }
+
+    setNewUserId('');
+    setShowNewConversation(false);
+  };
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -143,11 +198,6 @@ export default function DialoguePage() {
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              {conversation && conversation.unread > 0 && (
-                <div className="w-5 h-5 rounded-full bg-green-500 text-white text-xs flex items-center justify-center font-semibold">
-                  {conversation.unread}
-                </div>
-              )}
               <div className="flex items-center gap-2">
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={conversation?.avatar} />
@@ -250,23 +300,21 @@ export default function DialoguePage() {
               </Avatar>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Dialogs</h1>
-                <p className="text-sm text-gray-600">
-                  Unread {conversations.filter((c) => c.unread > 0).length}
-                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-green-500 text-white text-xs flex items-center justify-center font-semibold">
-                0
-              </div>
+              <button
+                onClick={() => router.push('/dialogue/ai')}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                aria-label="Open AI dialogue"
+              >
+                <Bot className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => router.push('/dialogue/search')}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <Search className="w-5 h-5" />
-              </button>
-              <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
-                <Edit className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -307,21 +355,77 @@ export default function DialoguePage() {
                   <p className="text-sm text-gray-600 truncate">{conversation.lastMessage}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {conversation.hasPencil && (
-                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                      <Edit className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                  {conversation.unread > 0 && (
-                    <div className="w-6 h-6 rounded-full bg-green-500 text-white text-xs flex items-center justify-center font-semibold">
-                      {conversation.unread}
-                    </div>
-                  )}
+                  <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                    <Edit className="w-3 h-3 text-white" />
+                  </div>
                 </div>
               </button>
             ))
           )}
         </div>
+
+        {/* Floating New Conversation Button */}
+        <button
+          onClick={() => setShowNewConversation(true)}
+          className="fixed bottom-28 right-6 w-14 h-14 rounded-full bg-green-500 text-white shadow-lg hover:bg-green-600 transition-colors flex items-center justify-center z-40"
+          aria-label="Start new conversation"
+        >
+          <Edit className="w-6 h-6" />
+        </button>
+
+        {/* New Conversation Modal */}
+        {showNewConversation && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">New Conversation</h2>
+                <button
+                  onClick={() => {
+                    setShowNewConversation(false);
+                    setNewUserId('');
+                  }}
+                  className="p-1 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter the user ID to start a conversation
+              </p>
+              <Input
+                value={newUserId}
+                onChange={(e) => setNewUserId(e.target.value)}
+                placeholder="Enter user ID"
+                className="mb-4"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleStartNewConversation();
+                  }
+                }}
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowNewConversation(false);
+                    setNewUserId('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+                  onClick={handleStartNewConversation}
+                  disabled={!newUserId.trim()}
+                >
+                  Start Chat
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <BottomNav />
     </>
