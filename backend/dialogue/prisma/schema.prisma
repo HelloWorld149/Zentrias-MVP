@@ -20,12 +20,32 @@ enum AiMessageRole {
 
 model User {
   id               String     @id @default(cuid())
+  org_default_id   String?    
   username         String     @unique
+  email            String     @unique
+  email_hash       String     @unique
+  email_verified   Boolean    @default(false)
+  display_name     String?
+  avatar_url       String?
+  is_active        Boolean    @default(true)
+  deleted_at       DateTime?
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
   password         String
   messagesSent     Message[]  @relation("MessageSender")
   messagesReceived Message[]  @relation("MessageReceiver")
   aiThreads        AiThread[]
+  pii              User_PII?
   createdAt        DateTime   @default(now())
+}
+
+model User_PII {
+  user_id  String   @id
+  email    String
+  phone    String?
+  legal_name String?
+  address  String?
+  user   User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model Message {

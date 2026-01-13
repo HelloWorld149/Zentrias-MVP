@@ -10,10 +10,10 @@ export class AuthController {
   private prisma = new PrismaClient();
 
   @Post('login')
-  async login(@Body() body: { username: string; password: string }){
+  async login(@Body() body: { email: string; password: string }){
     
     const user = await this.prisma.user.findUnique({
-        where: { username: body.username },
+        where: { email: body.email },
         });
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
@@ -26,27 +26,40 @@ export class AuthController {
   }
 
   @Post('register')
-  async register(@Body() body: { username: string; password: string }) {
+  async register(@Body() body: { email: string; password: string; username?: string }) {
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
-        where: { username: body.username },
+        where: { email: body.email },
         });
-    if (existingUser) throw new BadRequestException('Username already taken');
+    if (existingUser) throw new BadRequestException('Email already registered');
 
     // Hash password
     const hashedPassword = await this.authService.hashPassword(body.password);
 
-    // Create user in DB
-    
-    const newUser = await this.prisma.user.create({data: {
-        username: body.username,
+    // Generate email_hash for User_PII lookup (simple hash for demo)
+    const emailHash = Buffer.from(body.email).toString('base64');
+
+    // Generate a username from email if not provided
+    const username = body.username || body.email.split('@')[0];
+
+    // Create user in DB with User_PII
+    const newUser = await this.prisma.user.create({
+      data: {
+        email: body.email,
+        email_hash: emailHash,
+        username: username,
         password: hashedPassword,
+        pii: {
+          create: {
+            email: body.email,
+          },
+        },
       },
     });
 
     // Sign JWT token (optional, for auto-login)
     const token = await this.authService.signToken(newUser.id);
 
-    return { token, user: { id: newUser.id, username: newUser.username } };
+    return { token, user: { id: newUser.id, email: newUser.email } };
   }
 }
